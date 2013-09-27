@@ -1,0 +1,49 @@
+buildscript {
+	dependencies {
+		classpath fileTree(dir: 'build/libs', include: '*.jar')
+	}
+}
+
+apply plugin: 'dynaTrace'
+apply plugin: 'groovy'
+
+version = '0.1.0'
+
+dynaTrace {
+	agent {
+		path = 'c:/Program Files (x86)/dynaTrace/dynaTrace Agent 5.5.0/agent/lib64/dtagent.dll'
+		name = 'build-alphatest-us'
+		server = project.hasProperty("dynaTraceServer") ? dynaTraceServer : null
+		userName = "admin"
+		password = "admin"
+		extraParameters = [
+			transformationmaxavgwait: 150
+		]
+	}
+	
+	testRun {
+		profileName = project.hasProperty("profile") ? profile : null
+		extraMetadata = [
+			buildNumber: project.hasProperty("buildNumber") ? buildNumber : null,
+			vcsRevision: project.hasProperty("vcsRevision") ? vcsRevision : null
+		]
+	}
+}
+
+
+/**************** The rest of this is so we can build this project ******************************/
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	groovy group: 'org.codehaus.groovy', name: 'groovy', version: '2.0.0'
+	
+	compile gradleApi()
+	compile group: 'org.codehaus.groovy', name: 'groovy-json', version: '2.0.0'
+	compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.5'
+	
+	testCompile group: 'junit', name: 'junit', version: '4.10'
+	testCompile group: 'org.spockframework', name: 'spock-core', version: '0.7-groovy-2.0'
+}
