@@ -15,24 +15,16 @@
  */
 package org.aon.esolutions.build.gradle.dynaTrace.config
 
-import groovy.lang.Closure;
+import groovy.transform.ToString;
 
-class TestConfiguration {
+@ToString
+class RecordSessionConfiguration {
 
-	String profileName;
-	Map<String, String> extraMetadata;
-	RecordSessionConfiguration recordSession = new RecordSessionConfiguration();
+	String name;
+	String description;
+	boolean timestampIncluded = false;
+	String recordingOption = 'all';
+	boolean lockSession = false;
+	String label = "UnitTest";	
 	
-	def testRun(Closure closure) {
-		closure.resolveStrategy = Closure.DELEGATE_FIRST
-		closure.setDelegate(this);
-		closure();
-	}
-	
-	def recordSession(Closure closure) {
-		closure.resolveStrategy = Closure.DELEGATE_FIRST
-		closure.setDelegate(recordSession);
-		closure();
-	}
-
 }

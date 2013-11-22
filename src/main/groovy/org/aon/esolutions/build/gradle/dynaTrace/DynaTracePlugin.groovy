@@ -48,16 +48,18 @@ public class DynaTracePlugin implements Plugin<Project>  {
 						agentPath += "," + config.agent.extraParameters.collect { k, v -> k + "=" + v }.join(",")
 						
 					testTask.setJvmArgs([agentPath]);
+					
+					if (isSessionRecording()) api.startRecording(config.testRun.recordSession);
 				}
 			}
 		}
 		
 		project.gradle.taskGraph.afterTask { Task task, TaskState state ->
 			if (state.failure) {
-				println "FAILED"
+				if (isSessionRecording()) api.stopRecording();
 			}
 			else if (task == project.gradle.taskGraph.getAllTasks().last()) {
-				println "DONE!!!"
+				if (isSessionRecording()) api.stopRecording();
 			}
 		}
 	}
@@ -67,5 +69,9 @@ public class DynaTracePlugin implements Plugin<Project>  {
 		       config.agent?.name?.trim()?.length() > 0 &&
 			   config.agent?.server?.trim()?.length() > 0 &&
 			   config.testRun?.profileName?.trim()?.length() > 0
-	}  
+	}
+	
+	public boolean isSessionRecording() {
+		return config.testRun?.recordSession?.name?.length() > 0;
+	}
 }

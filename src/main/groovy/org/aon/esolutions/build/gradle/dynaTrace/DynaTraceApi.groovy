@@ -15,7 +15,12 @@
  */
 package org.aon.esolutions.build.gradle.dynaTrace
 
+import java.nio.charset.Charset;
+
+import groovy.util.logging.Slf4j;
+
 import org.aon.esolutions.build.gradle.dynaTrace.config.DynaTraceConfiguration
+import org.aon.esolutions.build.gradle.dynaTrace.config.RecordSessionConfiguration;
 import org.apache.tools.ant.util.Base64Converter
 import org.gradle.api.Project
 
@@ -50,15 +55,43 @@ class DynaTraceApi {
 			throw new RuntimeException("Error returned from dynaTrace while setting Test Metadata, please check server logs")
 	}
 	
+	public void startRecording(RecordSessionConfiguration config) {
+		Map<String, String> urlParameters = [
+			presentableName: config.getName(),
+			description: config.getDescription(),
+			isTimeStampAllowed: config.isTimestampIncluded().toString(),
+			recordingOption: config.getRecordingOption(),
+			isSessionLocked: config.isLockSession().toString(),
+			label: config.getLabel()
+		]
+		
+		def result = executeRestfulCall("/startrecording", "POST", urlParameters);
+		if (result.@value) {
+			project.getLogger().lifecycle("Recording Started: ${result.@value}");
+		}
+	}
+	
+	public void stopRecording() {
+		def result = executeRestfulCall("/stoprecording");
+		if (result.@value) {
+			project.getLogger().lifecycle("Recording Stopped: ${result.@value}");
+		}
+	}
+	
 	private def executeRestfulCall(String path, String httpMethod = "GET", Map<String, String> urlParameters = [:]) {
 		String url = config.agent.serverProtocol + "://" + config.agent.server + ":" + config.agent.serverPort +
 			"/rest/management/profiles/" + config.testRun.profileName + path;
 			
-		if (urlParameters) {
-			url = url + "?" + urlParameters.collect { k, v ->
-				return k + "=" + v
-			}.join("&")
-		}
+		String urlParametersStr = urlParameters ? urlParameters.collect { k, v ->
+			return k + "=" + URLEncoder.encode(v, "UTF-8");
+		}.join("&") : "";
+			
+		if (httpMethod == 'POST')
+			return executeRestfulCallPost(url, urlParametersStr);
+		else if (urlParameters)
+			url = url + "?" + urlParametersStr;
+			
+		project.getLogger().debug("Calling dynaTrace API: $url");
 		
 		final HttpURLConnection conn = url.toURL().openConnection()
 		conn.setRequestMethod(httpMethod);
@@ -70,6 +103,36 @@ class DynaTraceApi {
 		}
 		
 		String response = conn.inputStream.getText();
+		return slurper.parseText(response);
+	}
+	
+	private def executeRestfulCallPost(String request, String urlParameters) {
+		project.getLogger().debug("Calling dynaTrace API: $request");
+		
+		URL url = new URL(request);
+		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+		connection.setDoOutput(true);
+		connection.setDoInput(true);
+		connection.setInstanceFollowRedirects(false);
+		connection.setRequestMethod("POST");
+		connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+		connection.setRequestProperty("charset", "utf-8");
+		connection.setRequestProperty("Content-Length", "" + Integer.toString(urlParameters.getBytes().length));
+		connection.setUseCaches(false);
+		
+		if (config.agent.userName) {
+			String encoded = new Base64Converter().encode(config.agent.userName + ":" + config.agent.password);
+			connection.setRequestProperty("Authorization", "Basic "+ encoded);
+		}
+		
+		byte[] data = urlParameters.getBytes(Charset.forName("UTF-8"));
+		project.getLogger().debug("\tWith body: $urlParameters");
+		
+		connection.outputStream.write(data);		
+		String response = connection.inputStream.getText();
+				
+		connection.disconnect();
+		
 		return slurper.parseText(response);
 	}
 

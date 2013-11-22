@@ -27,6 +27,14 @@ dynaTrace {
 			buildNumber: project.hasProperty("buildNumber") ? buildNumber : null,
 			vcsRevision: project.hasProperty("vcsRevision") ? vcsRevision : null
 		]
+		recordSession {
+			name = "UnitTest - Build ${project.hasProperty("buildNumber") ? buildNumber : null}"
+			description = "Automated Unit Test run for build number ${project.hasProperty("buildNumber") ? buildNumber : null} and VCS revision ${project.hasProperty("vcsRevision") ? vcsRevision : null}"
+			timestampIncluded = true
+			recordingOption = 'all'
+			lockSession = false
+			label = 'UnitTest'
+		}
 	}
 }
 

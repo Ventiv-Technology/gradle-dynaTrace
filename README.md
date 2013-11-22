@@ -35,4 +35,11 @@ NOTE: If you use properties, and any of the REQUIRED properties are missing, the
 		- extraParameters - Hash for extra parameters to pass to the agent.  See [https://community.compuwareapm.com/community/display/DOCDT55/Java+Agent+Configuration](https://community.compuwareapm.com/community/display/DOCDT55/Java+Agent+Configuration "Java Agent Configuration")
 	- testRun
 		- profileName - REQUIRED - Name of the profile that lines up with the name of the agent.  TODO: Automatically figure this out via restful calls
-		- extraMetadata - Optionally passes extra metadata to dynaTrace to help keep track of things.  Good examples would be buildNumber or vcsRevision.    
+		- extraMetadata - Optionally passes extra metadata to dynaTrace to help keep track of things.  Good examples would be buildNumber or vcsRevision.
+		- recordSession - If present, the session will be recorded in dynaTrace
+			- name - REQUIRED - Name to give the session.  This is the name that will show up in the "Session Storage" section in the dynaTrace Cockpit
+			- description - More detailed description.  Accessible in the 'details' of the recorded session.  Defaults to blank
+			-   timestampIncluded - Append the timestamp on the recorded session name?  Defaults to false
+			-   recordingOption - 'all' = All Purepaths.  'violations' = only PurePaths marked as violated and time series.  'timeseries' =  time series only.  Defaults to 'all'
+			-   lockSession - Lock this session from being deleted.  Defaults to false.
+			-   label - Label to append to the test.  Defaults to 'UnitTest' 
