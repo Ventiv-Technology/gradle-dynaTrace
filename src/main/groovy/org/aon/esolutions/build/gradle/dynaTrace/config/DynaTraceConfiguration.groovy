@@ -19,6 +19,7 @@ class DynaTraceConfiguration {
 
 	AgentConfiguration agent = new AgentConfiguration();
 	TestConfiguration testRun = new TestConfiguration();
+    SpockTests spockTests = new SpockTests();
 	
 	def agent(Closure closure) {
 		closure.resolveStrategy = Closure.DELEGATE_FIRST
@@ -31,6 +32,12 @@ class DynaTraceConfiguration {
 		closure.setDelegate(testRun);
 		closure();
 	}
+
+    def spockTests(Closure closure) {
+        closure.resolveStrategy = Closure.DELEGATE_FIRST
+        closure.setDelegate(spockTests);
+        closure();
+    }
 	
 	def dynaTrace(Closure closure) {
 		closure.resolveStrategy = Closure.DELEGATE_FIRST

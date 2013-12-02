@@ -43,3 +43,17 @@ NOTE: If you use properties, and any of the REQUIRED properties are missing, the
 			-   recordingOption - 'all' = All Purepaths.  'violations' = only PurePaths marked as violated and time series.  'timeseries' =  time series only.  Defaults to 'all'
 			-   lockSession - Lock this session from being deleted.  Defaults to false.
 			-   label - Label to append to the test.  Defaults to 'UnitTest' 
+
+## Notes on Spock Testing
+
+Out of the box, dynaTrace only has sensors for JUnit testing.  In order to get Spock tests to work, you will need to annotate each test with the JUnit @Test.  This plugin has limited support to help.  If you add a spockTests configuration to the dynaTrace gradle configuration, you can be alerted or fail the build if the annotation is missing.  Here is an example:
+
+	dynaTrace {
+		spockTests {
+			junitTestAnnotationLevel = 'FAIL'
+		}
+	}
+
+junitTestAnnotationLevel can be any one of 'FAIL', 'DEBUG', 'INFO', 'LIFECYCLE', 'WARN', 'QUIET', 'ERROR'.  These correspond to the various levels of logging in Gradle, with the exception of 'FAIL'.  This special setting will fail the build, as well as log at an ERROR level.
+
+This will add a new task 'verifySpockJunitTestAnnotation' that will only execute if the output level matches what is requested.  For example, if you have it set to 'DEBUG', but are not running with the --debug flag, then this task will not execute.

@@ -13,15 +13,20 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-package org.aon.esolutions.build.gradle.dynaTrace;
+package org.aon.esolutions.build.gradle.dynaTrace
 
 import org.aon.esolutions.build.gradle.dynaTrace.config.DynaTraceConfiguration
+import org.aon.esolutions.build.gradle.dynaTrace.spock.SpockTestAnnotationHarness
+import org.aon.esolutions.build.gradle.dynaTrace.spock.SpockTestAnnotationTransform
+import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.execution.TaskExecutionGraph
+import org.gradle.api.logging.LogLevel
+import org.gradle.api.plugins.JavaPlugin
 import org.gradle.api.tasks.TaskState
-import org.gradle.api.tasks.testing.Test;
+import org.gradle.api.tasks.testing.Test
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -36,7 +41,12 @@ public class DynaTracePlugin implements Plugin<Project>  {
 	public void apply(Project project) {
 		project.convention.plugins.dynaTrace = config
 		api = new DynaTraceApi(project, config);
-		
+
+        createVerifySpockJunitTestAnnotationTask(project);
+
+        // When the task Graph is ready, Find the test task and do the following:
+        // - Set the JVM args to start dynaTrace instrumentation
+        // - Start Recording - if configuration is there
 		project.gradle.taskGraph.whenReady { TaskExecutionGraph graph ->
 			Test testTask = graph.getAllTasks().find { Task t -> t.getName() == 'test' }
 			if (testTask) {
@@ -53,7 +63,8 @@ public class DynaTracePlugin implements Plugin<Project>  {
 				}
 			}
 		}
-		
+
+        // Attach a 'listener' to the tasks finishing, so we can stop recording
 		project.gradle.taskGraph.afterTask { Task task, TaskState state ->
 			if (state.failure) {
 				if (isSessionRecording()) api.stopRecording();
@@ -63,6 +74,38 @@ public class DynaTracePlugin implements Plugin<Project>  {
 			}
 		}
 	}
+
+    private void createVerifySpockJunitTestAnnotationTask(Project project) {
+        // Do the Spock Integration - Alert / Fail if @Test annotation isn't there
+        Collection<File> testClassPath = [];
+
+        LogLevel logLevel = LogLevel.DEBUG;
+        String logLevelConfig = "DEBUG";
+
+        Task junitTestAnnotationVerification = project.task("verifySpockJunitTestAnnotation")
+        project.afterEvaluate {
+            // Get the logging level
+            logLevelConfig = config?.spockTests?.junitTestAnnotationLevel;
+            if (logLevelConfig) {
+                if (logLevelConfig.equalsIgnoreCase("FAIL")) logLevel = LogLevel.ERROR;
+                else logLevel = LogLevel.valueOf(logLevelConfig);
+            }
+
+            def testTask = project.getTasks().getByName(JavaPlugin.TEST_TASK_NAME)
+            if (testTask && project.getLogger().isEnabled(logLevel)) {
+                testTask.dependsOn junitTestAnnotationVerification
+                testClassPath = testTask.classpath.getFiles();
+            }
+        }
+
+        junitTestAnnotationVerification << {
+            SpockTestAnnotationHarness harness = new SpockTestAnnotationHarness(testClassPath, project.property('sourceSets').test.groovy.getFiles());
+            harness.scanClasses();
+            int numberMissing = SpockTestAnnotationTransform.printProblemMethods(project.getLogger(), logLevel);
+            if (numberMissing && logLevelConfig.equalsIgnoreCase("FAIL"))
+                throw new InvalidUserDataException("${numberMissing} Spock Test(s) do not have @Test annotation, and build is configured to FAIL");
+        }
+    }
 	
 	public boolean isConfigurationComplete() {
 		return config.agent?.path?.trim()?.length() > 0 &&
