@@ -42,27 +42,32 @@ public class DynaTracePlugin implements Plugin<Project>  {
 		project.convention.plugins.dynaTrace = config
 		api = new DynaTraceApi(project, config);
 
-        createVerifySpockJunitTestAnnotationTask(project);
-
         // When the task Graph is ready, Find the test task and do the following:
         // - Set the JVM args to start dynaTrace instrumentation
         // - Start Recording - if configuration is there
-		project.gradle.taskGraph.whenReady { TaskExecutionGraph graph ->
-			Test testTask = graph.getAllTasks().find { Task t -> t.getName() == 'test' }
-			if (testTask) {
-				if (isConfigurationComplete()) {
-					api.setTestMetadataPerConfig();
-					
-					String agentPath = "-agentpath:${config.agent.path}=name=${config.agent.name},server=${config.agent.getCollector()}:${config.agent.collectorPort}";
-					if (config.agent.extraParameters)
-						agentPath += "," + config.agent.extraParameters.collect { k, v -> k + "=" + v }.join(",")
-						
-					testTask.setJvmArgs([agentPath]);
-					
-					if (isSessionRecording()) api.startRecording(config.testRun.recordSession);
-				}
-			}
-		}
+        project.afterEvaluate {
+            Test testTask = project.getTasks().getByName(JavaPlugin.TEST_TASK_NAME) as Test
+            if (testTask) {
+                // Add the verifySpockJunitTestAnnotation Task
+                Task junitTestAnnotationVerification = null;
+                LogLevel juniTestAnnotationVerificationLogLevel = getJunitTestAnnotationLogLevel();
+                if (juniTestAnnotationVerificationLogLevel == null || project.getLogger().isEnabled(juniTestAnnotationVerificationLogLevel)) {
+                    junitTestAnnotationVerification = project.task("verifySpockJunitTestAnnotation")
+                    junitTestAnnotationVerification.ext.logLevel = juniTestAnnotationVerificationLogLevel
+                    junitTestAnnotationVerification << this.&junitTestAnnotationVerificationTask
+                    testTask.dependsOn junitTestAnnotationVerification
+                }
+
+                // Add the task to start communications with dynaTrace
+                if (isConfigurationComplete()) {
+                    // Add the dynaTraceTestSetup Task
+                    Task dynaTraceTestSetup = project.task("dynaTraceTestSetup")
+                    dynaTraceTestSetup << this.&dynaTraceTestSetupTask
+                    testTask.dependsOn dynaTraceTestSetup
+                    if (junitTestAnnotationVerification) dynaTraceTestSetup.dependsOn junitTestAnnotationVerification
+                }
+            }
+        }
 
         // Attach a 'listener' to the tasks finishing, so we can stop recording
 		project.gradle.taskGraph.afterTask { Task task, TaskState state ->
@@ -75,36 +80,40 @@ public class DynaTracePlugin implements Plugin<Project>  {
 		}
 	}
 
-    private void createVerifySpockJunitTestAnnotationTask(Project project) {
-        // Do the Spock Integration - Alert / Fail if @Test annotation isn't there
-        Collection<File> testClassPath = [];
+    private dynaTraceTestSetupTask(Task t) {
+        Test testTask = t.getProject().getTasks().getByName(JavaPlugin.TEST_TASK_NAME) as Test
 
-        LogLevel logLevel = LogLevel.DEBUG;
-        String logLevelConfig = "DEBUG";
+        String agentPath = "-agentpath:${config.agent.path}=name=${config.agent.name},server=${config.agent.getCollector()}:${config.agent.collectorPort}";
+        if (config.agent.extraParameters)
+            agentPath += "," + config.agent.extraParameters.collect { k, v -> k + "=" + v }.join(",")
 
-        Task junitTestAnnotationVerification = project.task("verifySpockJunitTestAnnotation")
-        project.afterEvaluate {
-            // Get the logging level
-            logLevelConfig = config?.spockTests?.junitTestAnnotationLevel;
-            if (logLevelConfig) {
-                if (logLevelConfig.equalsIgnoreCase("FAIL")) logLevel = LogLevel.ERROR;
-                else logLevel = LogLevel.valueOf(logLevelConfig);
-            }
+        testTask.setJvmArgs([agentPath]);
 
-            def testTask = project.getTasks().getByName(JavaPlugin.TEST_TASK_NAME)
-            if (testTask && project.getLogger().isEnabled(logLevel)) {
-                testTask.dependsOn junitTestAnnotationVerification
-                testClassPath = testTask.classpath.getFiles();
-            }
-        }
+        api.setTestMetadataPerConfig();
+        if (isSessionRecording()) api.startRecording(config.testRun.recordSession);
+    }
 
-        junitTestAnnotationVerification << {
-            SpockTestAnnotationHarness harness = new SpockTestAnnotationHarness(testClassPath, project.property('sourceSets').test.groovy.getFiles());
-            harness.scanClasses();
-            int numberMissing = SpockTestAnnotationTransform.printProblemMethods(project.getLogger(), logLevel);
-            if (numberMissing && logLevelConfig.equalsIgnoreCase("FAIL"))
-                throw new InvalidUserDataException("${numberMissing} Spock Test(s) do not have @Test annotation, and build is configured to FAIL");
-        }
+    private junitTestAnnotationVerificationTask(Task t) {
+        Project project = t.getProject();
+        def testTask = project.getTasks().getByName(JavaPlugin.TEST_TASK_NAME)
+        Collection<File> testClassPath = testTask.classpath.getFiles();
+
+        SpockTestAnnotationHarness harness = new SpockTestAnnotationHarness(testClassPath, project.property('sourceSets').test.groovy.getFiles());
+        harness.scanClasses();
+        int numberMissing = SpockTestAnnotationTransform.printProblemMethods(project.getLogger(), t.ext.logLevel);
+        if (numberMissing && config?.spockTests?.junitTestAnnotationLevel?.equalsIgnoreCase("FAIL"))
+            throw new InvalidUserDataException("${numberMissing} Spock Test(s) do not have @Test annotation, and build is configured to FAIL");
+    }
+
+    public LogLevel getJunitTestAnnotationLogLevel() {
+        String logLevelConfig = config?.spockTests?.junitTestAnnotationLevel;
+
+        if (logLevelConfig?.equalsIgnoreCase("FAIL"))
+            return LogLevel.ERROR;
+        else if (logLevelConfig)
+            return LogLevel.valueOf(logLevelConfig);
+        else
+            return null;
     }
 	
 	public boolean isConfigurationComplete() {

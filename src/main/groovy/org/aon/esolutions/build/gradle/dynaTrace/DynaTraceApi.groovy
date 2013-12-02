@@ -29,6 +29,7 @@ class DynaTraceApi {
 	private DynaTraceConfiguration config;
 	private Project project;
 	private XmlSlurper slurper = new XmlSlurper();
+    private boolean isRecording = false;
 	
 	public DynaTraceApi(Project project, DynaTraceConfiguration config) {
 		this.config = config;
@@ -68,14 +69,18 @@ class DynaTraceApi {
 		def result = executeRestfulCall("/startrecording", "POST", urlParameters);
 		if (result.@value) {
 			project.getLogger().lifecycle("Recording Started: ${result.@value}");
+            isRecording = true;
 		}
 	}
 	
 	public void stopRecording() {
-		def result = executeRestfulCall("/stoprecording");
-		if (result.@value) {
-			project.getLogger().lifecycle("Recording Stopped: ${result.@value}");
-		}
+        if (isRecording) {
+            def result = executeRestfulCall("/stoprecording");
+            if (result.@value) {
+                project.getLogger().lifecycle("Recording Stopped: ${result.@value}");
+                isRecording = false;
+            }
+        }
 	}
 	
 	private def executeRestfulCall(String path, String httpMethod = "GET", Map<String, String> urlParameters = [:]) {
