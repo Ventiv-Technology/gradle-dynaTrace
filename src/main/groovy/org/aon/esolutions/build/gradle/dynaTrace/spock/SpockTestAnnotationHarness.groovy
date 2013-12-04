@@ -22,6 +22,7 @@ import org.codehaus.groovy.control.CompilationUnit
 import org.codehaus.groovy.control.CompilerConfiguration
 import org.codehaus.groovy.control.Phases
 import org.codehaus.groovy.control.SourceUnit
+import org.gradle.api.logging.Logger
 
 import java.security.CodeSource
 
@@ -34,18 +35,24 @@ class SpockTestAnnotationHarness extends GroovyClassLoader {
 
     private Collection<File> classpath;
     private Collection<File> filesToScan;
+    private Logger logger;
 
-    public SpockTestAnnotationHarness(Collection<File> classpath, Collection<File> filesToScan) {
+    public SpockTestAnnotationHarness(Logger logger, Collection<File> classpath, Collection<File> filesToScan) {
         super();
         this.filesToScan = filesToScan;
         this.classpath = classpath;
+        this.logger = logger;
     }
 
     public void scanClasses() {
         classpath.each { this.addClasspath(it.getAbsolutePath()) }
 
         this.filesToScan.each {
-            this.parseClass(it);
+            try {
+                this.parseClass(it);
+            } catch (Throwable e) {
+                logger.error("Unable to parse $it, so there may be @Test annotations missing");
+            }
         }
     }
 

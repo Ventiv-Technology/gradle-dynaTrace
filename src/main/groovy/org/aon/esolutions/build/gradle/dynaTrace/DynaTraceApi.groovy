@@ -15,14 +15,12 @@
  */
 package org.aon.esolutions.build.gradle.dynaTrace
 
-import java.nio.charset.Charset;
-
-import groovy.util.logging.Slf4j;
-
 import org.aon.esolutions.build.gradle.dynaTrace.config.DynaTraceConfiguration
-import org.aon.esolutions.build.gradle.dynaTrace.config.RecordSessionConfiguration;
+import org.aon.esolutions.build.gradle.dynaTrace.config.RecordSessionConfiguration
 import org.apache.tools.ant.util.Base64Converter
 import org.gradle.api.Project
+
+import java.nio.charset.Charset
 
 class DynaTraceApi {
 
@@ -30,11 +28,24 @@ class DynaTraceApi {
 	private Project project;
 	private XmlSlurper slurper = new XmlSlurper();
     private boolean isRecording = false;
+
+    private static Map<String, DynaTraceApi> INSTANCE_MAP = [:];
 	
-	public DynaTraceApi(Project project, DynaTraceConfiguration config) {
-		this.config = config;
-		this.project = project;
+	private DynaTraceApi(Project project, DynaTraceConfiguration config) {
+        this.config = config;
+        this.project = project;
+
+        project.getLogger().debug("Initializing dynaTraceApi");
 	}
+
+    public static DynaTraceApi getApi(Project project, DynaTraceConfiguration config) {
+        String apiKey = config.agent.server + "_" + config.agent.serverPort + "_" + config.testRun.profileName
+        if (INSTANCE_MAP.containsKey(apiKey) == false) {
+            INSTANCE_MAP.put(apiKey, new DynaTraceApi(project, config));
+        }
+
+        return INSTANCE_MAP.get(apiKey);
+    }
 	
 	public void setTestMetadataPerConfig() {
 		Map<String, String> urlParameters = [:]
@@ -65,12 +76,14 @@ class DynaTraceApi {
 			isSessionLocked: config.isLockSession().toString(),
 			label: config.getLabel()
 		]
-		
-		def result = executeRestfulCall("/startrecording", "POST", urlParameters);
-		if (result.@value) {
-			project.getLogger().lifecycle("Recording Started: ${result.@value}");
-            isRecording = true;
-		}
+
+        if (isRecording == false) {
+            def result = executeRestfulCall("/startrecording", "POST", urlParameters);
+            if (result.@value) {
+                project.getLogger().lifecycle("Recording Started: ${result.@value}");
+                isRecording = true;
+            }
+        }
 	}
 	
 	public void stopRecording() {
@@ -84,61 +97,93 @@ class DynaTraceApi {
 	}
 	
 	private def executeRestfulCall(String path, String httpMethod = "GET", Map<String, String> urlParameters = [:]) {
-		String url = config.agent.serverProtocol + "://" + config.agent.server + ":" + config.agent.serverPort +
-			"/rest/management/profiles/" + config.testRun.profileName + path;
-			
-		String urlParametersStr = urlParameters ? urlParameters.collect { k, v ->
-			return k + "=" + URLEncoder.encode(v, "UTF-8");
-		}.join("&") : "";
-			
-		if (httpMethod == 'POST')
-			return executeRestfulCallPost(url, urlParametersStr);
-		else if (urlParameters)
-			url = url + "?" + urlParametersStr;
-			
-		project.getLogger().debug("Calling dynaTrace API: $url");
-		
-		final HttpURLConnection conn = url.toURL().openConnection()
-		conn.setRequestMethod(httpMethod);
-		
-		// Authentication
-		if (config.agent.userName) {
-			String encoded = new Base64Converter().encode(config.agent.userName + ":" + config.agent.password); 
-			conn.setRequestProperty("Authorization", "Basic "+ encoded);
-		}
-		
-		String response = conn.inputStream.getText();
-		return slurper.parseText(response);
+        String url = config.agent.serverProtocol + "://" + config.agent.server + ":" + config.agent.serverPort +
+                "/rest/management/profiles/" + config.testRun.profileName + path;
+
+        HttpURLConnection conn = null;
+        try {
+            String urlParametersStr = urlParameters ? urlParameters.collect { k, v ->
+                return k + "=" + URLEncoder.encode(v, "UTF-8");
+            }.join("&") : "";
+
+            if (httpMethod == 'POST')
+                return executeRestfulCallPost(url, urlParametersStr);
+            else if (urlParameters)
+                url = url + "?" + urlParametersStr;
+
+            project.getLogger().debug("Calling dynaTrace API: $url");
+
+            conn = url.toURL().openConnection() as HttpURLConnection
+            conn.setRequestMethod(httpMethod);
+
+            // Authentication
+            if (config.agent.userName) {
+                String encoded = new Base64Converter().encode(config.agent.userName + ":" + config.agent.password);
+                conn.setRequestProperty("Authorization", "Basic "+ encoded);
+            }
+
+            String response = conn.inputStream.getText();
+            return slurper.parseText(response);
+        } catch (def e) {
+            project.getLogger().error("Error calling dynaTrace API: $url");
+            if (conn != null) {
+                String errorResponse = conn.getErrorStream().getText();
+                project.getLogger().error("Error Response: $errorResponse");
+
+                return slurper.parseText(errorResponse);
+            }
+        } finally {
+            if (conn != null)
+                conn.disconnect();
+        }
+
+        return slurper.parseText("<error reason=\"No Response Found\"/>");
 	}
 	
 	private def executeRestfulCallPost(String request, String urlParameters) {
-		project.getLogger().debug("Calling dynaTrace API: $request");
-		
-		URL url = new URL(request);
-		HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-		connection.setDoOutput(true);
-		connection.setDoInput(true);
-		connection.setInstanceFollowRedirects(false);
-		connection.setRequestMethod("POST");
-		connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-		connection.setRequestProperty("charset", "utf-8");
-		connection.setRequestProperty("Content-Length", "" + Integer.toString(urlParameters.getBytes().length));
-		connection.setUseCaches(false);
-		
-		if (config.agent.userName) {
-			String encoded = new Base64Converter().encode(config.agent.userName + ":" + config.agent.password);
-			connection.setRequestProperty("Authorization", "Basic "+ encoded);
-		}
-		
-		byte[] data = urlParameters.getBytes(Charset.forName("UTF-8"));
-		project.getLogger().debug("\tWith body: $urlParameters");
-		
-		connection.outputStream.write(data);		
-		String response = connection.inputStream.getText();
-				
-		connection.disconnect();
-		
-		return slurper.parseText(response);
+        HttpURLConnection connection = null;
+
+        try {
+            project.getLogger().debug("Calling dynaTrace API: $request");
+
+            URL url = new URL(request);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setDoOutput(true);
+            connection.setDoInput(true);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            connection.setRequestProperty("charset", "utf-8");
+            connection.setRequestProperty("Content-Length", "" + Integer.toString(urlParameters.getBytes().length));
+            connection.setUseCaches(false);
+
+            if (config.agent.userName) {
+                String encoded = new Base64Converter().encode(config.agent.userName + ":" + config.agent.password);
+                connection.setRequestProperty("Authorization", "Basic "+ encoded);
+            }
+
+            byte[] data = urlParameters.getBytes(Charset.forName("UTF-8"));
+            project.getLogger().debug("\tWith body: $urlParameters");
+
+            connection.outputStream.write(data);
+            String response = connection.inputStream.getText();
+
+            return slurper.parseText(response);
+        } catch (def e) {
+            project.getLogger().error("Error calling dynaTrace API: $url");
+            if (connection != null) {
+                String errorResponse = connection.getErrorStream().getText();
+                project.getLogger().error("Error Response: $errorResponse");
+
+                return slurper.parseText(errorResponse);
+            }
+        } finally {
+            if (connection != null)
+                connection.disconnect();
+        }
+
+        return slurper.parseText("<error reason=\"No Response Found\"/>");
+
 	}
 
 }

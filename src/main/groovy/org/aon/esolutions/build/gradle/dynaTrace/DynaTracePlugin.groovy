@@ -40,7 +40,7 @@ public class DynaTracePlugin implements Plugin<Project>  {
 	@Override
 	public void apply(Project project) {
 		project.convention.plugins.dynaTrace = config
-		api = new DynaTraceApi(project, config);
+	    api = DynaTraceApi.getApi(project, config)
 
         // When the task Graph is ready, Find the test task and do the following:
         // - Set the JVM args to start dynaTrace instrumentation
@@ -98,7 +98,7 @@ public class DynaTracePlugin implements Plugin<Project>  {
         def testTask = project.getTasks().getByName(JavaPlugin.TEST_TASK_NAME)
         Collection<File> testClassPath = testTask.classpath.getFiles();
 
-        SpockTestAnnotationHarness harness = new SpockTestAnnotationHarness(testClassPath, project.property('sourceSets').test.groovy.getFiles());
+        SpockTestAnnotationHarness harness = new SpockTestAnnotationHarness(project.getLogger(), testClassPath, project.property('sourceSets').test.groovy.getFiles());
         harness.scanClasses();
         int numberMissing = SpockTestAnnotationTransform.printProblemMethods(project.getLogger(), t.ext.logLevel);
         if (numberMissing && config?.spockTests?.junitTestAnnotationLevel?.equalsIgnoreCase("FAIL"))
