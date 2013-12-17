@@ -28,6 +28,7 @@ class DynaTraceApi {
 	private Project project;
 	private XmlSlurper slurper = new XmlSlurper();
     private boolean isRecording = false;
+    private boolean isMetadataSet = false;
 
     private static Map<String, DynaTraceApi> INSTANCE_MAP = [:];
 	
@@ -61,10 +62,14 @@ class DynaTraceApi {
 		if (config.testRun.extraMetadata) {
 			urlParameters << config.testRun.extraMetadata.findAll { it.value }
 		}
-		
-		def result = executeRestfulCall("/setmetadata", "PUT", urlParameters);
-		if (result.@value == false)
-			throw new RuntimeException("Error returned from dynaTrace while setting Test Metadata, please check server logs")
+
+        if (isMetadataSet == false) {
+            def result = executeRestfulCall("/setmetadata", "PUT", urlParameters);
+            if (result.@value == false)
+                throw new RuntimeException("Error returned from dynaTrace while setting Test Metadata, please check server logs")
+
+            isMetadataSet = true;
+        }
 	}
 	
 	public void startRecording(RecordSessionConfiguration config) {

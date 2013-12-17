@@ -10,7 +10,7 @@ apply plugin: 'license'
 apply plugin: 'maven'
 
 group = 'org.aon.esolutions'
-version = '0.1.1'
+version = '0.1.2'
 sourceCompatibility = '1.5'
 targetCompatibility = '1.5'
 
