@@ -98,11 +98,32 @@ public class DynaTracePlugin implements Plugin<Project>  {
         def testTask = project.getTasks().getByName(JavaPlugin.TEST_TASK_NAME)
         Collection<File> testClassPath = testTask.classpath.getFiles();
 
-        SpockTestAnnotationHarness harness = new SpockTestAnnotationHarness(project.getLogger(), testClassPath, project.property('sourceSets').test.groovy.getFiles());
-        harness.scanClasses();
+        // Use Groovy's dynamic nature to create a SpockTestAnnotationHarness that utilizes the proper version of groovy
+        def harness = getSpockTestHarness(testClassPath, project.property('sourceSets').test.groovy.getFiles());
+        List<String> errorMessages = harness.scanClasses();
+        if (errorMessages)
+            project.getLogger().error("Errors from Scanning: " + errorMessages);
+
         int numberMissing = SpockTestAnnotationTransform.printProblemMethods(project.getLogger(), t.ext.logLevel);
         if (numberMissing && config?.spockTests?.junitTestAnnotationLevel?.equalsIgnoreCase("FAIL"))
             throw new InvalidUserDataException("${numberMissing} Spock Test(s) do not have @Test annotation, and build is configured to FAIL");
+    }
+
+    /**
+     * Builds a SpockTestAnnotationHarness using the groovy on the provided classpath
+     * @return
+     */
+    private Object getSpockTestHarness(Collection<File> classpath, Collection<File> filesToScan) {
+        // Build our URL's with the classpath first (hopefully the proper groovy), then tack on the jar(s) that will contain SpockTestAnnotationHarness
+        List<URL> toSearch = classpath.collect { it.toURL() }
+        toSearch.addAll(SpockTestAnnotationHarness.getClassLoader().getURLs());
+
+        // Create our classloader, and find our class
+        URLClassLoader cl = new URLClassLoader(toSearch as URL[]);
+        Class clazz = cl.loadClass(SpockTestAnnotationHarness.getName());
+
+        // Create a new instance
+        return clazz.newInstance(classpath, filesToScan);
     }
 
     public LogLevel getJunitTestAnnotationLogLevel() {

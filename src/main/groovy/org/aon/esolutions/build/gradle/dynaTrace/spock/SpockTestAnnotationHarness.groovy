@@ -35,25 +35,26 @@ class SpockTestAnnotationHarness extends GroovyClassLoader {
 
     private Collection<File> classpath;
     private Collection<File> filesToScan;
-    private Logger logger;
+    private List<String> errorMessages = [];
 
-    public SpockTestAnnotationHarness(Logger logger, Collection<File> classpath, Collection<File> filesToScan) {
+    public SpockTestAnnotationHarness(Collection<File> classpath, Collection<File> filesToScan) {
         super();
         this.filesToScan = filesToScan;
         this.classpath = classpath;
-        this.logger = logger;
     }
 
-    public void scanClasses() {
+    public List<String> scanClasses() {
         classpath.each { this.addClasspath(it.getAbsolutePath()) }
 
         this.filesToScan.each {
             try {
                 this.parseClass(it);
             } catch (Throwable e) {
-                logger.error("Unable to parse $it, so there may be @Test annotations missing");
+                errorMessages << "Unable to parse $it, so there may be @Test annotations missing"
             }
         }
+
+        return errorMessages;
     }
 
     protected CompilationUnit createCompilationUnit(CompilerConfiguration config, CodeSource codeSource) {
