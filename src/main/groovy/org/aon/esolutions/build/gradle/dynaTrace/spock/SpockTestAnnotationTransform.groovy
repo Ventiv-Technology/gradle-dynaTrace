@@ -15,14 +15,16 @@
  */
 package org.aon.esolutions.build.gradle.dynaTrace.spock
 
-import org.codehaus.groovy.ast.*
+import org.codehaus.groovy.ast.ASTNode
+import org.codehaus.groovy.ast.AnnotationNode
+import org.codehaus.groovy.ast.ClassHelper
+import org.codehaus.groovy.ast.ClassNode
+import org.codehaus.groovy.ast.MethodNode
 import org.codehaus.groovy.ast.expr.ConstantExpression
 import org.codehaus.groovy.control.CompilePhase
 import org.codehaus.groovy.control.SourceUnit
 import org.codehaus.groovy.transform.ASTTransformation
 import org.codehaus.groovy.transform.GroovyASTTransformation
-import org.gradle.api.logging.LogLevel
-import org.gradle.api.logging.Logger
 
 @GroovyASTTransformation(phase = CompilePhase.CLASS_GENERATION)
 class SpockTestAnnotationTransform implements ASTTransformation {
@@ -62,15 +64,17 @@ class SpockTestAnnotationTransform implements ASTTransformation {
 		return clazz.isDerivedFrom(Specification);
 	}
 
-    public static final int printProblemMethods(Logger logger, LogLevel level) {
+    public static final List<String> printProblemMethods() {
+        List<String> problems = [];
+
         FOUND_PROBLEM_METHODS.each { MethodNode method ->
             List<AnnotationNode> featureMetaDataNode = method.getAnnotations(FeatureMetaData);
             if (featureMetaDataNode) {
                 String testName = ((ConstantExpression)featureMetaDataNode[0].getMember('name')).getValue();
-                logger.log(level, "Missing @Test Annotation on ${method.getDeclaringClass().getName()}.${testName}");
+                problems << "Missing @Test Annotation on ${method.getDeclaringClass().getName()}.${testName}"
             }
         }
 
-        return FOUND_PROBLEM_METHODS.size();
+        return problems;
     }
 }

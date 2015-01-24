@@ -102,11 +102,15 @@ public class DynaTracePlugin implements Plugin<Project>  {
         def harness = getSpockTestHarness(testClassPath, project.property('sourceSets').test.groovy.getFiles());
         List<String> errorMessages = harness.scanClasses();
         if (errorMessages)
-            project.getLogger().error("Errors from Scanning: " + errorMessages);
+            project.getLogger().error(System.lineSeparator() + "Errors from Scanning: " + System.lineSeparator() + errorMessages.join(System.lineSeparator()));
 
-        int numberMissing = SpockTestAnnotationTransform.printProblemMethods(project.getLogger(), t.ext.logLevel);
-        if (numberMissing && config?.spockTests?.junitTestAnnotationLevel?.equalsIgnoreCase("FAIL"))
-            throw new InvalidUserDataException("${numberMissing} Spock Test(s) do not have @Test annotation, and build is configured to FAIL");
+        List<String> problems = SpockTestAnnotationTransform.printProblemMethods();
+        if (problems) {
+            project.getLogger().log(t.ext.logLevel, problems.join(System.lineSeparator()))
+
+            if (config?.spockTests?.junitTestAnnotationLevel?.equalsIgnoreCase("FAIL"))
+                throw new InvalidUserDataException("${problems.size()} Spock Test(s) do not have @Test annotation, and build is configured to FAIL");
+        }
     }
 
     /**
